@@ -1,7 +1,8 @@
 package main
 
 import (
-	"github.com/giou-k/hyperledger-fabric-docker/docker"
+	"github.com/giou-k/hyperledger-fabric-docker/pkg/config"
+	"github.com/giou-k/hyperledger-fabric-docker/pkg/docker"
 	"log"
 	"os"
 	"os/exec"
@@ -9,35 +10,35 @@ import (
 
 func main() {
 
-	// Generate the crypto files for docker containers.
-	cryptogen := exec.Command("/home/giou/go/src/github.com/fabric/fabric-samples/bin/cryptogen",
-		"generate", "--config=./configs/crypto-config.yaml")
+	// Parse the configuration of our network.
+	cfg, err := config.ParseConfig()
+	if err != nil {
+		log.Printf("ParseConfig finished with error: %v", err)
+		os.Exit(1)
+	}
+	s := &docker.Service{
+		Cfg: &cfg,
+	}
 
-	err := cryptogen.Run()
+	// Generate the crypto files for docker containers.
+	cryptogen := exec.Command(s.Cfg.CryptogenPath,
+		"generate", "--config=./pkg/config/crypto-config.yaml")
+
+	err = cryptogen.Run()
 	if err != nil {
 		log.Printf("Cryptogen finished with error: %v", err)
 		os.Exit(1)
 	}
 
-	// todo parse config from a config file.
-	c := docker.Config{}
+	//// Create docker client.
+	//cli, err := docker.NewClient()
+	//if err != nil {
+	//	panic(err)
+	//}
+	//s.MyClient = cli
 
-	cli, err := docker.NewClient()
-	if err != nil {
-		panic(err)
-	}
-	c = docker.Config{
-		Peer:     []string{
-			"peer0.org1.example.com",
-			"peer1.org1.example.com",
-		},
-		Orderer:  []string{
-			"orderer0.org1.example.com",
-		},
-		MyClient: cli,
-	}
-
-	err = c.CreateNetwork()
+	// Run the containers.
+	err = s.CreateNetwork()
 	if err != nil {
 		log.Printf("CreateNetwork finished with error: %v", err)
 		os.Exit(1)

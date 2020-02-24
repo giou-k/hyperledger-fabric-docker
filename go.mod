@@ -16,6 +16,7 @@ require (
 	golang.org/x/net v0.0.0-20200219183655-46282727080f // indirect
 	golang.org/x/sys v0.0.0-20200219091948-cb0a6d8edb6c // indirect
 	google.golang.org/grpc v1.27.1 // indirect
+	gopkg.in/yaml.v2 v2.2.8
 )
 
 replace github.com/docker/docker v1.13.1 => github.com/docker/engine v0.0.0-20191113042239-ea84732a7725

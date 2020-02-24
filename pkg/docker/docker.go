@@ -5,8 +5,14 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+	"github.com/giou-k/hyperledger-fabric-docker/pkg/config"
 	"log"
 )
+
+type Service struct {
+	Cfg      *config.Config
+	MyClient *client.Client
+}
 
 type CliInterface interface {
 	CreateNetwork() error
@@ -14,29 +20,7 @@ type CliInterface interface {
 	List() error
 }
 
-type Config struct {
-	Peer    []string
-	Orderer []string
-
-	MyClient *client.Client
-}
-
-func (c *Config) CreateNetwork() error {
-	var err error
-
-	err = c.BringUp()
-	if err != nil {
-		return nil
-	}
-
-	err = c.List()
-	if err != nil {
-		return nil
-	}
-
-	return nil
-}
-
+// NewClient creates a docker client.
 func NewClient() (*client.Client, error) {
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
@@ -46,10 +30,34 @@ func NewClient() (*client.Client, error) {
 	return cli, err
 }
 
-func (c *Config) BringUp() error {
+// CreateNetwork creates the containers/nodes of our blockchain network.
+func (s *Service) CreateNetwork() error {
+	var err error
+
+	// Create docker client.
+	cli, err := NewClient()
+	if err != nil {
+		panic(err)
+	}
+	s.MyClient = cli
+
+	err = s.BringUp()
+	if err != nil {
+		return nil
+	}
+
+	err = s.List()
+	if err != nil {
+		return nil
+	}
+
+	return nil
+}
+
+func (s *Service) BringUp() error {
 	ctx := context.Background()
 
-	config := &container.Config{
+	cfg := &container.Config{
 		Hostname:   "peer0.org1.example.com",
 		Domainname: "peer0.org1.example.com",
 		Env: []string{
@@ -80,28 +88,29 @@ func (c *Config) BringUp() error {
 		NetworkDisabled: false,
 	}
 
-	resp, err := c.MyClient.ContainerCreate(ctx, config, nil, nil,
+	resp, err := s.MyClient.ContainerCreate(ctx, cfg, nil, nil,
 		"peer0.org1.example.com")
 	if err != nil {
 		return err
 	}
 	log.Println("containerCreate resp: ", resp)
 
-	if err := c.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+	if err := s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
 		return err
 	}
 
 	return err
 }
 
-func (c *Config) List() error {
-	containers, err := c.MyClient.ContainerList(context.Background(), types.ContainerListOptions{})
+// List prints out the list of running containers.
+func (s *Service) List() error {
+	containers, err := s.MyClient.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
 		return err
 	}
 
-	for _, container := range containers {
-		log.Println(container.ID)
+	for i, container := range containers {
+		log.Println("container ID:", container.ID, "with container Name:", container.Names[i])
 	}
 
 	return nil
