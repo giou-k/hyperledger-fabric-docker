@@ -30,13 +30,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	//// Create docker client.
-	//cli, err := docker.NewClient()
-	//if err != nil {
-	//	panic(err)
-	//}
-	//s.MyClient = cli
-
 	// Run the containers.
 	err = s.CreateNetwork()
 	if err != nil {

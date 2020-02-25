@@ -1,15 +1,26 @@
 
-# Path of cryptogen tool. Can be omitted.
+# Path of cryptogen tool. Can be omitted if cryptogen is exported to $PATH.
 cryptogenPath: "/home/giou/go/src/github.com/fabric/fabric-samples/bin/cryptogen"
 
-# Peer array with domains.
-peers:
-  - peer0.org1.example.com
-  - peer1.org1.example.com
-  - peer0.org2.example.com
-  - peer1.org2.example.com
-
-# Orderer array with domains.
-orderers:
-  - orderer0.org1.example.com
-  - orderer0.org2.example.com
+orgs:
+  -
+    name: org1
+    # Peer array with domains.
+    peers:
+       -
+         name: peer0.org1.example.com
+       -
+         name: peer1.org1.example.com
+    orderers:
+       -
+         name: orderer0.org1.example.com
+  -
+    name: org2
+    peers:
+      -
+        name: peer0.org2.example.com
+      -
+        name: peer1.org2.example.com
+    orderers:
+      -
+        name: orderer0.org2.example.com
