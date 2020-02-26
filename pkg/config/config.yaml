@@ -1,6 +1,8 @@
 
 # Path of cryptogen tool. Can be omitted if cryptogen is exported to $PATH.
-cryptogenPath: "/home/giou/go/src/github.com/fabric/fabric-samples/bin/cryptogen"
+hfToolPath: "/home/giou/go/src/github.com/hyperledger/fabric-samples/bin"
+channelName: "giouchannel"
+consensusType: "etcdraft"
 
 orgs:
   -
@@ -13,7 +15,7 @@ orgs:
          name: peer1.org1.example.com
     orderers:
        -
-         name: orderer0.org1.example.com
+         name: orderer1.example.com
   -
     name: org2
     peers:
@@ -23,4 +25,4 @@ orgs:
         name: peer1.org2.example.com
     orderers:
       -
-        name: orderer0.org2.example.com
+        name: orderer2.example.com

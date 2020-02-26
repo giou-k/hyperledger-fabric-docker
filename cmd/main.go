@@ -8,6 +8,8 @@ import (
 	"os/exec"
 )
 
+const FABRIC_CFG_PATH = "./pkg/config"
+
 func main() {
 
 	// Parse the configuration of our network.
@@ -20,13 +22,15 @@ func main() {
 		Cfg: &cfg,
 	}
 
-	// Generate the crypto files for docker containers.
-	cryptogen := exec.Command(s.Cfg.CryptogenPath,
-		"generate", "--config=./pkg/config/crypto-config.yaml")
+	// Generate the genesis block for orderer channel and the anchor peers tx file for the common channel.
+	output, err := exec.Command("./scripts/genChannelArtifacts.sh", s.Cfg.ChannelName, s.Cfg.ConsensusType,
+		FABRIC_CFG_PATH, s.Cfg.HfToolPath).CombinedOutput()
 
-	err = cryptogen.Run()
+	//err = configtxgen.Run()
 	if err != nil {
-		log.Printf("Cryptogen finished with error: %v", err)
+		log.Println("Error when running genChannelArtifacts.sh.  Output:")
+		log.Println(string(output))
+		log.Printf("Got exit status: %s\n", err.Error())
 		os.Exit(1)
 	}
 
