@@ -17,7 +17,7 @@ type Service struct {
 
 type CliInterface interface {
 	CreateNetwork() error
-	RunPeer() error
+	RunPeer(orgName string, peer []config.Peers, peerNum int, i int) error
 	List() error
 }
 
@@ -60,7 +60,7 @@ func (s *Service) CreateNetwork() error {
 }
 
 // RunPeer runs peer containers.
-func (s *Service) RunPeer(orgName string, peer []config.Peers, peerNum int, i int) error {
+func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, i int) error {
 	ctx := context.Background()
 
 	cfg := &container.Config{

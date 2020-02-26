@@ -10,6 +10,11 @@ import (
 
 const FABRIC_CFG_PATH = "./pkg/config"
 
+var (
+	s docker.Service
+	i docker.CliInterface = &s
+)
+
 func main() {
 
 	// Parse the configuration of our network.
@@ -18,15 +23,11 @@ func main() {
 		log.Printf("ParseConfig finished with error: %v", err)
 		os.Exit(1)
 	}
-	s := &docker.Service{
-		Cfg: &cfg,
-	}
+	s.Cfg = &cfg
 
 	// Generate the genesis block for orderer channel and the anchor peers tx file for the common channel.
 	output, err := exec.Command("./scripts/genChannelArtifacts.sh", s.Cfg.ChannelName, s.Cfg.ConsensusType,
 		FABRIC_CFG_PATH, s.Cfg.HfToolPath).CombinedOutput()
-
-	//err = configtxgen.Run()
 	if err != nil {
 		log.Println("Error when running genChannelArtifacts.sh.  Output:")
 		log.Println(string(output))
@@ -35,7 +36,7 @@ func main() {
 	}
 
 	// Run the containers.
-	err = s.CreateNetwork()
+	err = i.CreateNetwork()
 	if err != nil {
 		log.Printf("CreateNetwork finished with error: %v", err)
 		os.Exit(1)

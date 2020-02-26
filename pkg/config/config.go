@@ -8,10 +8,10 @@ import (
 
 type (
 	Config struct {
-		HfToolPath string `yaml:"hfToolPath,omitempty"` // FIXME if exported in $PATH, leave it empty.
-		ChannelName     string         `yaml:"channelName"`
-		ConsensusType   string         `yaml:"consensusType"`
-		Orgs            []Organization `yaml:"orgs"`
+		HfToolPath    string         `yaml:"hfToolPath,omitempty"` // FIXME if exported in $PATH, leave it empty.
+		ChannelName   string         `yaml:"channelName"`
+		ConsensusType string         `yaml:"consensusType"`
+		Orgs          []Organization `yaml:"orgs"`
 	}
 
 	Organization struct {
