@@ -12,7 +12,7 @@ set +x
 SYS_CHANNEL=giou-sys-channel
 
 export FABRIC_CFG_PATH
-export PATH=HF_TOOL_PATH:${PWD}:$PATH
+export PATH=${HF_TOOL_PATH}:${PWD}:$PATH
 
 # Generate all the certificates for msps, orderers and peers.
 generateCertificates () {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/giou-k/hyperledger-fabric-docker/pkg/config"
 
+	"path/filepath"
 	"context"
 	"log"
 	"strings"
@@ -15,7 +16,7 @@ import (
 type Service struct {
 	MyClient *client.Client
 
-	Cfg      *config.Config
+	Cfg *config.Config
 }
 
 type CliInterface interface {
@@ -80,17 +81,22 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, i int
 		},
 		Cmd:   []string{"peer", "node", "start"},
 		Image: "hyperledger/fabric-peer:1.4.6",
-		Volumes: map[string]struct{}{
-			"/var/run/:/host/var/run/": {},
-			"crypto-config/peerOrganizations/org1.example.com/peers/" + peer[i].Name + "/msp:" +
-				"/etc/hyperledger/fabric/msp": {},
-			peer[i].Name + ":/var/hyperledger/production": {},
-		},
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric/peer",
-		NetworkDisabled: false,
 	}
 
-	resp, err := s.MyClient.ContainerCreate(ctx, cfg, nil, nil,
+	// In need of absolute path to bind/mount host:container paths.
+	projectPath, err := filepath.Abs("./")
+	hostConfig := &container.HostConfig{
+		Binds: []string{
+			"/var/run/:/host/var/run/",
+			projectPath + "/pkg/config/crypto-config/peerOrganizations/" +
+				orgName + ".example.com/peers/" + peer[i].Name + "/msp:" + "/etc/hyperledger/fabric/msp",
+			projectPath + "/pkg/config/" + peer[i].Name +
+				":/var/hyperledger/production",
+		},
+	}
+
+	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
 		peer[i].Name)
 	if err != nil {
 		return err
