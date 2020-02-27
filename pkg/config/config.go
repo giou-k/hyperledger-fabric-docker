@@ -40,8 +40,7 @@ func ParseConfig() (Config, error) {
 	defer f.Close()
 
 	decoder := yaml.NewDecoder(f)
-	err = decoder.Decode(&c)
-	if err != nil {
+	if err = decoder.Decode(&c); err != nil {
 		return c, err
 	}
 

@@ -1,18 +1,21 @@
 package docker
 
 import (
-	"context"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
+
 	"github.com/giou-k/hyperledger-fabric-docker/pkg/config"
+
+	"context"
 	"log"
 	"strings"
 )
 
 type Service struct {
-	Cfg      *config.Config
 	MyClient *client.Client
+
+	Cfg      *config.Config
 }
 
 type CliInterface interface {
@@ -23,21 +26,19 @@ type CliInterface interface {
 
 // NewClient creates a docker client.
 func NewClient() (*client.Client, error) {
-	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	if err != nil {
-		return cli, err
-	}
-
-	return cli, err
+	return client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 }
 
 // CreateNetwork creates the containers/nodes of our blockchain network.
 func (s *Service) CreateNetwork() error {
-	var err error
+	var (
+		cli *client.Client
+
+		err error
+	)
 
 	// Create docker client.
-	cli, err := NewClient()
-	if err != nil {
+	if cli, err = NewClient(); err != nil {
 		return err
 	}
 	s.MyClient = cli
@@ -51,12 +52,7 @@ func (s *Service) CreateNetwork() error {
 		}
 	}
 
-	err = s.List()
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return s.List()
 }
 
 // RunPeer runs peer containers.
@@ -101,11 +97,7 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, i int
 	}
 	log.Println("containerCreate resp: ", resp)
 
-	if err := s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-		return err
-	}
-
-	return err
+	return s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
 }
 
 // RunOrderer runs orderer containers.
