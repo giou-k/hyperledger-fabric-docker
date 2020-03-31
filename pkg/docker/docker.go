@@ -21,7 +21,8 @@ type Service struct {
 
 type CliInterface interface {
 	CreateNetwork() error
-	RunPeer(orgName string, peer []config.Peers, peerNum int, i int) error
+	RunPeer(orgName string, peer []config.Peers, peerNum int, projectPath string, i int) error
+	RunOrderer(orgName string, orderer []config.Orderers, ordererNum int, projectPath string, i int) error
 	List() error
 }
 
@@ -44,20 +45,27 @@ func (s *Service) CreateNetwork() error {
 	}
 	s.MyClient = cli
 
+	// In need of absolute path to bind/mount host:container paths.
+	projectPath, err := filepath.Abs("./")
+
 	// Loop through organizations and run peer containers.
 	for _, org := range s.Cfg.Orgs {
 		for i, _ := range org.Peers {
-			if err = s.RunPeer(org.Name, org.Peers, len(org.Peers), i); err != nil {
+			if err = s.RunPeer(org.Name, org.Peers, len(org.Peers), projectPath, i); err != nil {
 				return err
 			}
 		}
+	}
+	err = s.RunOrderer("example.com", s.Cfg.Orgs[0].Orderers,1,projectPath,0)
+	if err != nil {
+		return err
 	}
 
 	return s.List()
 }
 
 // RunPeer runs peer containers.
-func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, i int) error {
+func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, projectPath string, i int) error {
 	ctx := context.Background()
 
 	cfg := &container.Config{
@@ -84,8 +92,6 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, i int
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric/peer",
 	}
 
-	// In need of absolute path to bind/mount host:container paths.
-	projectPath, err := filepath.Abs("./")
 	hostConfig := &container.HostConfig{
 		Binds: []string{
 			"/var/run/:/host/var/run/",
@@ -107,45 +113,48 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, i int
 }
 
 // RunOrderer runs orderer containers.
-//func (s *Service) RunOrderer(orderer []config.Orderers, ordererNum int, i int) error {
-//	ctx := context.Background()
-//
-//	cfg := &container.Config{
-//		Hostname:   orderer[i].Name,
-//		Domainname: orderer[i].Name,
-//		Env: []string{
-//			"FABRIC_LOGGING_SPEC=INFO",
-//			"ORDERER_GENERAL_LISTENADDRESS=0.0.0.0",
-//			"ORDERER_GENERAL_GENESISMETHOD=file",
-//			"ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block",
-//			"ORDERER_GENERAL_LOCALMSPID=OrdererMSP",
-//			"ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp", // FIXME
-//		},
-//		Cmd:   []string{"orderer"},
-//		Image: "hyperledger/fabric-orderer:1.4.6",
-//		Volumes: map[string]struct{}{
-//			"channel-artifacts/genesis.block:/var/hyperledger/orderer/orderer.genesis.block": {},
-//			"crypto-config/ordererOrganizations/example.com/orderers/" + orderer[i].Name + "/msp:" +
-//				"/var/hyperledger/orderer/msp": {},
-//			orderer[i].Name + ":/var/hyperledger/production/orderer": {},
-//		},
-//		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric",
-//		NetworkDisabled: false,
-//	}
-//
-//	resp, err := s.MyClient.ContainerCreate(ctx, cfg, nil, nil,
-//		orderer[i].Name)
-//	if err != nil {
-//		return err
-//	}
-//	log.Println("containerCreate resp: ", resp)
-//
-//	if err := s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-//		return err
-//	}
-//
-//	return err
-//}
+func (s *Service) RunOrderer(orgName string, orderer []config.Orderers, ordererNum int, projectPath string, i int) error {
+	ctx := context.Background()
+
+	cfg := &container.Config{
+		Hostname:   orderer[i].Name,
+		Domainname: orderer[i].Name,
+		Env: []string{
+			"FABRIC_LOGGING_SPEC=INFO",
+			"ORDERER_GENERAL_LISTENADDRESS=0.0.0.0",
+			"ORDERER_GENERAL_GENESISMETHOD=file",
+			"ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block",
+			"ORDERER_GENERAL_LOCALMSPID=OrdererMSP",
+			"ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp", // FIXME
+		},
+		Cmd:   []string{"orderer"},
+		Image: "hyperledger/fabric-orderer:1.4.6",
+		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric",
+	}
+
+	hostConfig := &container.HostConfig{
+		Binds: []string{
+			"/var/run/:/host/var/run/",
+			projectPath + "/pkg/config/crypto-config/peerOrganizations/" +
+				orgName + ".example.com/peers/" + orderer[i].Name + "/msp:" + "/etc/hyperledger/orderer/msp",
+			projectPath + "/pkg/config/" + orderer[i].Name +
+				":/var/hyperledger/production/orderer",
+		},
+	}
+
+	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
+		orderer[i].Name)
+	if err != nil {
+		return err
+	}
+	log.Println("containerCreate resp: ", resp)
+
+	if err := s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
+		return err
+	}
+
+	return err
+}
 
 // List prints out the list of running containers.
 func (s *Service) List() error {
