@@ -13,7 +13,7 @@ const FABRIC_CFG_PATH = "./pkg/config"
 
 var (
 	s docker.Service
-	i docker.CliInterface = &s
+	n docker.NetworkAPI = &s
 
 	cfg config.Config
 
@@ -40,7 +40,7 @@ func main() {
 	}
 
 	// Run the containers.
-	if err = i.CreateNetwork(); err != nil {
+	if err = n.CreateNetwork(); err != nil {
 		log.Printf("CreateNetwork finished with error: %v", err)
 		os.Exit(1)
 	}

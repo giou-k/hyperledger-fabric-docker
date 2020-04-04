@@ -5,24 +5,30 @@ channelName: "giouchannel"
 consensusType: "etcdraft"
 
 orgs:
-  -
-    name: org1
+  - name: ordererOrgs
+    orderers:
+      - name: orderer1.example.com
+        port: 7050
+      - name: orderer2.example.com
+        port: 7051
+      - name: orderer3.example.com
+        port: 7052
+      - name: orderer4.example.com
+        port: 7053
+      - name: orderer5.example.com
+        port: 7054
+  - name: org1
     # Peer array with domains.
     peers:
-       -
-         name: peer0.org1.example.com
-       -
-         name: peer1.org1.example.com
-    orderers:
-       -
-         name: orderer1.example.com
-  -
-    name: org2
+       - name: peer0.org1.example.com
+#       - name: peer1.org1.example.com
+#    orderers:
+#       -
+#         name: orderer1.example.com
+  - name: org2
     peers:
-      -
-        name: peer0.org2.example.com
-      -
-        name: peer1.org2.example.com
-    orderers:
-      -
-        name: orderer2.example.com
+      - name: peer0.org2.example.com
+#      - name: peer1.org2.example.com
+#    orderers:
+#      -
+#        name: orderer2.example.com

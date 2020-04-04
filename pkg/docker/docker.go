@@ -1,15 +1,15 @@
 package docker
 
 import (
+	"context"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
-
+	"github.com/docker/go-connections/nat"
 	"github.com/giou-k/hyperledger-fabric-docker/pkg/config"
-
-	"path/filepath"
-	"context"
+	"github.com/giou-k/weave/errors"
 	"log"
+	"path/filepath"
 	"strings"
 )
 
@@ -19,7 +19,7 @@ type Service struct {
 	Cfg *config.Config
 }
 
-type CliInterface interface {
+type NetworkAPI interface {
 	CreateNetwork() error
 	RunPeer(orgName string, peer []config.Peers, peerNum int, projectPath string, i int) error
 	RunOrderer(orgName string, orderer []config.Orderers, ordererNum int, projectPath string, i int) error
@@ -45,6 +45,13 @@ func (s *Service) CreateNetwork() error {
 	}
 	s.MyClient = cli
 
+	ctx := context.Background() // Fixme: have the ctx as parameter in every func.
+	respNet, err := cli.NetworkCreate(ctx, "giou_net", types.NetworkCreate{})
+	if err != nil {
+		return err
+	}
+	log.Println("network has been created wth ID: ", respNet.ID)
+
 	// In need of absolute path to bind/mount host:container paths.
 	projectPath, err := filepath.Abs("./")
 
@@ -55,10 +62,11 @@ func (s *Service) CreateNetwork() error {
 				return err
 			}
 		}
-	}
-	err = s.RunOrderer("example.com", s.Cfg.Orgs[0].Orderers,1,projectPath,0)
-	if err != nil {
-		return err
+		for i, _ := range org.Orderers {
+			if err = s.RunOrderer(org.Name, org.Orderers, len(org.Orderers), projectPath, i); err != nil {
+				return err
+			}
+		}
 	}
 
 	return s.List()
@@ -72,8 +80,9 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, proje
 		Hostname:   peer[i].Name,
 		Domainname: peer[i].Name,
 		Env: []string{
-			"CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=giou", // FIXME
 			"CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock",
+			"CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=giou_net",
+			"FABRIC_LOGGING_SPEC=INFO",
 			"CORE_PEER_GOSSIP_USELEADERELECTION=true",
 			"CORE_PEER_GOSSIP_ORGLEADER=false",
 			"CORE_PEER_PROFILE_ENABLED=true",
@@ -87,9 +96,10 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, proje
 			"CORE_PEER_GOSSIP_EXTERNALENDPOINT=" + peer[i].Name + ":7051",
 			"CORE_PEER_LOCALMSPID=" + strings.Title(orgName) + "MSP",
 		},
-		Cmd:   []string{"peer", "node", "start"},
-		Image: "hyperledger/fabric-peer:1.4.6",
+		Cmd:             []string{"peer", "node", "start"},
+		Image:           "hyperledger/fabric-peer:1.4.6",
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric/peer",
+		NetworkDisabled: false,
 	}
 
 	hostConfig := &container.HostConfig{
@@ -100,6 +110,7 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, proje
 			projectPath + "/pkg/config/" + peer[i].Name +
 				":/var/hyperledger/production",
 		},
+		NetworkMode: "giou_net",
 	}
 
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
@@ -126,20 +137,44 @@ func (s *Service) RunOrderer(orgName string, orderer []config.Orderers, ordererN
 			"ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block",
 			"ORDERER_GENERAL_LOCALMSPID=OrdererMSP",
 			"ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp", // FIXME
+			//	TLS
+			"ORDERER_GENERAL_TLS_ENABLED=true",
+			"ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key",
+			"ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt",
+			"ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]",
+			"ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt",
+			"ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key",
+			"ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]",
 		},
-		Cmd:   []string{"orderer"},
-		Image: "hyperledger/fabric-orderer:1.4.6",
+		Cmd:             []string{"orderer"},
+		Image:           "hyperledger/fabric-orderer:1.4.6",
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric",
+		NetworkDisabled: false,
+	}
+
+	containerPort, err := nat.NewPort("tcp", "7050")
+	if err != nil {
+		return errors.Wrap(err,"Unable to get the port")
 	}
 
 	hostConfig := &container.HostConfig{
 		Binds: []string{
-			"/var/run/:/host/var/run/",
-			projectPath + "/pkg/config/crypto-config/peerOrganizations/" +
-				orgName + ".example.com/peers/" + orderer[i].Name + "/msp:" + "/etc/hyperledger/orderer/msp",
+			projectPath + "/pkg/config/crypto-config/ordererOrganizations/example.com/orderers/" +
+				orderer[i].Name + "/msp:" + "/var/hyperledger/orderer/msp",
+			projectPath + "/pkg/config/crypto-config/ordererOrganizations/example.com/orderers/" +
+				orderer[i].Name + "/tls:" + "/var/hyperledger/orderer/tls",
 			projectPath + "/pkg/config/" + orderer[i].Name +
 				":/var/hyperledger/production/orderer",
+			projectPath + "/pkg/config/channel-artifacts/genesis.block:/var/hyperledger/orderer/orderer.genesis.block",
 		},
+		PortBindings: nat.PortMap{
+			containerPort: []nat.PortBinding{{
+				HostIP:   "0.0.0.0",
+				HostPort: orderer[i].Port,
+			},
+			},
+		},
+		NetworkMode: "giou_net",
 	}
 
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
@@ -147,7 +182,11 @@ func (s *Service) RunOrderer(orgName string, orderer []config.Orderers, ordererN
 	if err != nil {
 		return err
 	}
-	log.Println("containerCreate resp: ", resp)
+	log.Println("containerCreate for orderers response: ", resp)
+
+	//hijackResp, err := s.MyClient.ContainerAttach(ctx, resp.ID, types.ContainerAttachOptions{})
+	//defer hijackResp.Close()
+	//// TODO: should I put defer in a goroutine?
 
 	if err := s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
 		return err
@@ -164,9 +203,25 @@ func (s *Service) List() error {
 	}
 
 	log.Println("List of containers that are running: ")
-	for _, container := range containers {
-		log.Println("container ID:", container.ID, "with container Name:", container.Names[0])
+	for _, thisContainer := range containers {
+		log.Println("container ID:", thisContainer.ID, "with container Name:", thisContainer.Names[0])
 	}
 
 	return nil
 }
+
+//func printStream(streamer io.Reader) error {
+//
+//	var w io.Writer
+//	if n, err := io.Copy(w, streamer); n == 0 || err != nil {
+//		return err
+//	}
+//
+//	var stream string
+//	if n, err := io.WriteString(w, stream); n == 0 || err != nil {
+//		return err
+//	}
+//	log.Println("hijackResp: ", stream)
+//
+//	return nil
+//}

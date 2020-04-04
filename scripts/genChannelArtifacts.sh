@@ -27,9 +27,9 @@ generateCertificates () {
   echo "##### Generate certificates using cryptogen tool #########"
   echo "##########################################################"
 
-  if [ -d "./pkg/config/crypto-config" ]; then
-    rm -Rf ./pkg/config/crypto-config
-  fi
+#  if [ -d "./pkg/config/crypto-config" ]; then
+#    rm -Rf ./pkg/config/crypto-config
+#  fi
   set -x
   cryptogen generate --config=./pkg/config/crypto-config.yaml && mv -f crypto-config ./pkg/config
   res=$?
@@ -58,11 +58,11 @@ function generateChannelArtifacts() {
   # named orderer.genesis.block or the orderer will fail to launch!
   set -x
   if [ "${CONSENSUS_TYPE}" == "solo" ]; then
-    configtxgen -profile TwoOrgsOrdererGenesis -channelID ${SYS_CHANNEL} -outputBlock ./pkg/config/genesis.block
+    configtxgen -profile TwoOrgsOrdererGenesis -channelID ${SYS_CHANNEL} -outputBlock ./pkg/config/channel-artifacts/orderer.genesis.block
   elif [ "${CONSENSUS_TYPE}" == "kafka" ]; then
-    configtxgen -profile SampleDevModeKafka -channelID ${SYS_CHANNEL} -outputBlock ./pkg/config/genesis.block
+    configtxgen -profile SampleDevModeKafka -channelID ${SYS_CHANNEL} -outputBlock ./pkg/config/channel-artifacts/orderer.genesis.block
   elif [ "${CONSENSUS_TYPE}" == "etcdraft" ]; then
-    configtxgen -profile SampleMultiNodeEtcdRaft -channelID ${SYS_CHANNEL} -outputBlock ./pkg/config/genesis.block
+    configtxgen -profile SampleMultiNodeEtcdRaft -channelID ${SYS_CHANNEL} -outputBlock ./pkg/config/channel-artifacts/genesis.block
   else
     set +x
     echo "unrecognized CONSESUS_TYPE='${CONSENSUS_TYPE}'. exiting"
@@ -82,7 +82,7 @@ function generateChannelArtifacts() {
   echo "#################################################################"
 
   set -x
-  configtxgen -profile TwoOrgsChannel -outputCreateChannelTx ./pkg/config/channel.tx -channelID ${CHANNEL_NAME}
+  configtxgen -profile TwoOrgsChannel -outputCreateChannelTx ./pkg/config/channel-artifacts/${CHANNEL_NAME}.tx -channelID ${CHANNEL_NAME}
   res=$?
   set +x
 
@@ -97,7 +97,7 @@ function generateChannelArtifacts() {
   echo "#################################################################"
 
   set -x
-  configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./pkg/config/Org1MSPanchors.tx -channelID ${CHANNEL_NAME} \
+  configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./pkg/config/channel-artifacts/Org1MSPanchors.tx -channelID ${CHANNEL_NAME} \
   -asOrg Org1MSP
   res=$?
   set +x
@@ -113,7 +113,7 @@ function generateChannelArtifacts() {
   echo "#################################################################"
   set -x
 
-  configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./pkg/config/Org2MSPanchors.tx -channelID ${CHANNEL_NAME} \
+  configtxgen -profile TwoOrgsChannel -outputAnchorPeersUpdate ./pkg/config/channel-artifacts/Org2MSPanchors.tx -channelID ${CHANNEL_NAME} \
    -asOrg Org2MSP
   res=$?
   set +x

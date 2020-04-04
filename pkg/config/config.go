@@ -16,8 +16,8 @@ type (
 
 	Organization struct {
 		Name     string     `yaml:name`
-		Peers    []Peers    `yaml:peers`
-		Orderers []Orderers `yaml:orderers`
+		Peers    []Peers    `yaml:peers,omitempty`
+		Orderers []Orderers `yaml:orderers,omitempty`
 	}
 
 	Peers struct {
@@ -26,6 +26,7 @@ type (
 
 	Orderers struct {
 		Name string `yaml:name`
+		Port string `yaml:port`
 	}
 )
 
@@ -47,6 +48,9 @@ func ParseConfig() (Config, error) {
 	// Number of peers must be odd, so that the environmental variable of peer containers
 	// "CORE_PEER_GOSSIP_BOOTSTRAP" can be calculated autonomous.
 	for _, org := range c.Orgs {
+		if len(org.Peers)/2 == 0 {
+			continue
+		}
 		if len(org.Peers)/2 != 1 {
 			return c, errors.New("The number of peers must be odd. ")
 		}
