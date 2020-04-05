@@ -1,19 +1,12 @@
 #!/bin/bash
 set -e
 
-# remove all containers
+# remove all containers and prune the network
 docker rm -f $(docker ps -aq)
-
+docker network prune -f
 
 # remove crypto-config dir
 rm -rf ./pkg/config/crypto-config/*
 
-# remove volumes
-rm -rf pkg/config/orderer*
-rm -rf pkg/config/peer*
-
 #remove channel artifact
-rm -rf channel-artifacts/*
-#rm -rf pkg/config/channel.tx
-#rm -rf pkg/config/genesis.block
-#rm -rf pkg/config/Org*
+rm -rf ./pkg/config/channel-artifacts/*

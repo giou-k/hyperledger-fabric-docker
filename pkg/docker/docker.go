@@ -7,7 +7,7 @@ import (
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"github.com/giou-k/hyperledger-fabric-docker/pkg/config"
-	"github.com/giou-k/weave/errors"
+	"github.com/pkg/errors"
 	"log"
 	"path/filepath"
 	"strings"
