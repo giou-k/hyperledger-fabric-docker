@@ -15,18 +15,18 @@ type (
 	}
 
 	Organization struct {
-		Name     string     `yaml:name`
-		Peers    []Peers    `yaml:peers,omitempty`
-		Orderers []Orderers `yaml:orderers,omitempty`
+		Name     string     `yaml:"name"`
+		Peers    []Peers    `yaml:"peers,omitempty"`
+		Orderers []Orderers `yaml:"orderers,omitempty"`
 	}
 
 	Peers struct {
-		Name string `yaml:name`
+		Name string `yaml:"name"`
 	}
 
 	Orderers struct {
-		Name string `yaml:name`
-		Port string `yaml:port`
+		Name string `yaml:"name"`
+		Port string `yaml:"port"`
 	}
 )
 

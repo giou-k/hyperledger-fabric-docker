@@ -22,7 +22,7 @@ type Service struct {
 type NetworkAPI interface {
 	CreateNetwork() error
 	RunPeer(orgName string, peer []config.Peers, peerNum int, projectPath string, i int) error
-	RunOrderer(orgName string, orderer []config.Orderers, ordererNum int, projectPath string, i int) error
+	RunOrderer(orderer []config.Orderers, projectPath string, i int) error
 	List() error
 }
 
@@ -57,13 +57,13 @@ func (s *Service) CreateNetwork() error {
 
 	// Loop through organizations and run peer containers.
 	for _, org := range s.Cfg.Orgs {
-		for i, _ := range org.Peers {
+		for i := range org.Peers {
 			if err = s.RunPeer(org.Name, org.Peers, len(org.Peers), projectPath, i); err != nil {
 				return err
 			}
 		}
-		for i, _ := range org.Orderers {
-			if err = s.RunOrderer(org.Name, org.Orderers, len(org.Orderers), projectPath, i); err != nil {
+		for i := range org.Orderers {
+			if err = s.RunOrderer(org.Orderers, projectPath, i); err != nil {
 				return err
 			}
 		}
@@ -124,7 +124,7 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, proje
 }
 
 // RunOrderer runs orderer containers.
-func (s *Service) RunOrderer(orgName string, orderer []config.Orderers, ordererNum int, projectPath string, i int) error {
+func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i int) error {
 	ctx := context.Background()
 
 	cfg := &container.Config{
@@ -154,7 +154,7 @@ func (s *Service) RunOrderer(orgName string, orderer []config.Orderers, ordererN
 
 	containerPort, err := nat.NewPort("tcp", "7050")
 	if err != nil {
-		return errors.Wrap(err,"Unable to get the port")
+		return errors.Wrap(err, "Unable to get the port")
 	}
 
 	hostConfig := &container.HostConfig{
@@ -177,8 +177,7 @@ func (s *Service) RunOrderer(orgName string, orderer []config.Orderers, ordererN
 		NetworkMode: "giou_net",
 	}
 
-	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
-		orderer[i].Name)
+	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil, orderer[i].Name)
 	if err != nil {
 		return err
 	}
