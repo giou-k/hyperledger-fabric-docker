@@ -54,6 +54,9 @@ func (s *Service) CreateNetwork() error {
 
 	// In need of absolute path to bind/mount host:container paths.
 	projectPath, err := filepath.Abs("./")
+	if err != nil {
+		return errors.Wrap(err, "Failed to get project's path with error")
+	}
 
 	// Loop through organizations and run peer containers.
 	for _, org := range s.Cfg.Orgs {
@@ -76,26 +79,7 @@ func (s *Service) CreateNetwork() error {
 func (s *Service) RunPeer(orgName string, peer []config.Peers, projectPath string, i int) error {
 	ctx := context.Background()
 
-	cfg := &container.Config{
-		Hostname:        peer[i].Name,
-		Domainname:      peer[i].Name,
-		Env:             envVars(peer, i, orgName),
-		Cmd:             []string{"peer", "node", "start"},
-		Image:           "hyperledger/fabric-peer:1.4.6",
-		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric/peer",
-		NetworkDisabled: false,
-	}
-
-	hostConfig := &container.HostConfig{
-		Binds: []string{
-			"/var/run/:/host/var/run/",
-			projectPath + "/pkg/config/crypto-config/peerOrganizations/" +
-				orgName + ".example.com/peers/" + peer[i].Name + "/msp:" + "/etc/hyperledger/fabric/msp",
-			projectPath + "/pkg/config/" + peer[i].Name +
-				":/var/hyperledger/production",
-		},
-		NetworkMode: "giou_net",
-	}
+	cfg, hostConfig := configPeer(peer, projectPath, orgName, i)
 
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
 		peer[i].Name)
@@ -111,39 +95,9 @@ func (s *Service) RunPeer(orgName string, peer []config.Peers, projectPath strin
 func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i int) error {
 	ctx := context.Background()
 
-	cfg := &container.Config{
-		Hostname:        orderer[i].Name,
-		Domainname:      orderer[i].Name,
-		Env:             envVars(nil, 0, ""),
-		Cmd:             []string{"orderer"},
-		Image:           "hyperledger/fabric-orderer:1.4.6",
-		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric",
-		NetworkDisabled: false,
-	}
-
-	containerPort, err := nat.NewPort("tcp", "7050")
+	cfg, hostConfig, err := configOrderer(orderer[i], projectPath)
 	if err != nil {
-		return errors.Wrap(err, "NewPort failed with error")
-	}
-
-	hostConfig := &container.HostConfig{
-		Binds: []string{
-			projectPath + "/pkg/config/crypto-config/ordererOrganizations/example.com/orderers/" +
-				orderer[i].Name + "/msp:" + "/var/hyperledger/orderer/msp",
-			projectPath + "/pkg/config/crypto-config/ordererOrganizations/example.com/orderers/" +
-				orderer[i].Name + "/tls:" + "/var/hyperledger/orderer/tls",
-			projectPath + "/pkg/config/" + orderer[i].Name +
-				":/var/hyperledger/production/orderer",
-			projectPath + "/pkg/config/channel-artifacts/genesis.block:/var/hyperledger/orderer/orderer.genesis.block",
-		},
-		PortBindings: nat.PortMap{
-			containerPort: []nat.PortBinding{{
-				HostIP:   "0.0.0.0",
-				HostPort: orderer[i].Port,
-			},
-			},
-		},
-		NetworkMode: "giou_net",
+		return errors.Wrap(err, "configOrderer failed")
 	}
 
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil, orderer[i].Name)
@@ -219,6 +173,74 @@ func envVars(peer []config.Peers, i int, orgName string) []string {
 		}
 	}
 
+}
+
+// configPeer configures docker variables for each peer.
+func configPeer(peer []config.Peers, projectPath string, orgName string, i int) (*container.Config, *container.HostConfig) {
+
+	cfg := &container.Config{
+		Hostname:        peer[i].Name,
+		Domainname:      peer[i].Name,
+		Env:             envVars(peer, i, orgName),
+		Cmd:             []string{"peer", "node", "start"},
+		Image:           "hyperledger/fabric-peer:1.4.6",
+		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric/peer",
+		NetworkDisabled: false,
+	}
+
+	hostConfig := &container.HostConfig{
+		Binds: []string{
+			"/var/run/:/host/var/run/",
+			projectPath + "/pkg/config/crypto-config/peerOrganizations/" +
+				orgName + ".example.com/peers/" + peer[i].Name + "/msp:" + "/etc/hyperledger/fabric/msp",
+			projectPath + "/pkg/config/" + peer[i].Name +
+				":/var/hyperledger/production",
+		},
+		NetworkMode: "giou_net",
+	}
+
+	return cfg, hostConfig
+}
+
+// configOrderer configures docker variables for each orderer.
+func configOrderer(orderer config.Orderers, projectPath string) (*container.Config, *container.HostConfig, error) {
+
+	cfg := &container.Config{
+		Hostname:        orderer.Name,
+		Domainname:      orderer.Name,
+		Env:             envVars(nil, 0, ""),
+		Cmd:             []string{"orderer"},
+		Image:           "hyperledger/fabric-orderer:1.4.6",
+		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric",
+		NetworkDisabled: false,
+	}
+
+	containerPort, err := nat.NewPort("tcp", "7050")
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "NewPort failed with error")
+	}
+
+	hostConfig := &container.HostConfig{
+		Binds: []string{
+			projectPath + "/pkg/config/crypto-config/ordererOrganizations/example.com/orderers/" +
+				orderer.Name + "/msp:" + "/var/hyperledger/orderer/msp",
+			projectPath + "/pkg/config/crypto-config/ordererOrganizations/example.com/orderers/" +
+				orderer.Name + "/tls:" + "/var/hyperledger/orderer/tls",
+			projectPath + "/pkg/config/" + orderer.Name +
+				":/var/hyperledger/production/orderer",
+			projectPath + "/pkg/config/channel-artifacts/genesis.block:/var/hyperledger/orderer/orderer.genesis.block",
+		},
+		PortBindings: nat.PortMap{
+			containerPort: []nat.PortBinding{{
+				HostIP:   "0.0.0.0",
+				HostPort: orderer.Port,
+			},
+			},
+		},
+		NetworkMode: "giou_net",
+	}
+
+	return cfg, hostConfig, nil
 }
 
 //func printStream(streamer io.Reader) error {
