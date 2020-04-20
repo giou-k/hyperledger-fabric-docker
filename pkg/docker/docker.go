@@ -21,7 +21,7 @@ type Service struct {
 
 type NetworkAPI interface {
 	CreateNetwork() error
-	RunPeer(orgName string, peer []config.Peers, peerNum int, projectPath string, i int) error
+	RunPeer(orgName string, peer []config.Peers, projectPath string, i int) error
 	RunOrderer(orderer []config.Orderers, projectPath string, i int) error
 	List() error
 }
@@ -58,7 +58,7 @@ func (s *Service) CreateNetwork() error {
 	// Loop through organizations and run peer containers.
 	for _, org := range s.Cfg.Orgs {
 		for i := range org.Peers {
-			if err = s.RunPeer(org.Name, org.Peers, len(org.Peers), projectPath, i); err != nil {
+			if err = s.RunPeer(org.Name, org.Peers, projectPath, i); err != nil {
 				return err
 			}
 		}
@@ -73,29 +73,13 @@ func (s *Service) CreateNetwork() error {
 }
 
 // RunPeer runs peer containers.
-func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, projectPath string, i int) error {
+func (s *Service) RunPeer(orgName string, peer []config.Peers, projectPath string, i int) error {
 	ctx := context.Background()
 
 	cfg := &container.Config{
 		Hostname:   peer[i].Name,
 		Domainname: peer[i].Name,
-		Env: []string{
-			"CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock",
-			"CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=giou_net",
-			"FABRIC_LOGGING_SPEC=INFO",
-			"CORE_PEER_GOSSIP_USELEADERELECTION=true",
-			"CORE_PEER_GOSSIP_ORGLEADER=false",
-			"CORE_PEER_PROFILE_ENABLED=true",
-
-			"CORE_PEER_ID=" + peer[i].Name,
-			"CORE_PEER_ADDRESS=" + peer[i].Name + ":7051",
-			"CORE_PEER_LISTENADDRESS=0.0.0.0:7051",
-			"CORE_PEER_CHAINCODEADDRESS=" + peer[i].Name + ":7052",
-			"CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052",
-			"CORE_PEER_GOSSIP_BOOTSTRAP=" + peer[peerNum-(i+1)].Name,
-			"CORE_PEER_GOSSIP_EXTERNALENDPOINT=" + peer[i].Name + ":7051",
-			"CORE_PEER_LOCALMSPID=" + strings.Title(orgName) + "MSP",
-		},
+		Env: envVars(peer, i, orgName),
 		Cmd:             []string{"peer", "node", "start"},
 		Image:           "hyperledger/fabric-peer:1.4.6",
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric/peer",
@@ -118,7 +102,7 @@ func (s Service) RunPeer(orgName string, peer []config.Peers, peerNum int, proje
 	if err != nil {
 		return err
 	}
-	log.Println("containerCreate resp: ", resp)
+	log.Println("containerCreate for peer response: ", resp)
 
 	return s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
 }
@@ -130,22 +114,7 @@ func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i in
 	cfg := &container.Config{
 		Hostname:   orderer[i].Name,
 		Domainname: orderer[i].Name,
-		Env: []string{
-			"FABRIC_LOGGING_SPEC=INFO",
-			"ORDERER_GENERAL_LISTENADDRESS=0.0.0.0",
-			"ORDERER_GENERAL_GENESISMETHOD=file",
-			"ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block",
-			"ORDERER_GENERAL_LOCALMSPID=OrdererMSP",
-			"ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp", // FIXME
-			//	TLS
-			"ORDERER_GENERAL_TLS_ENABLED=true",
-			"ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key",
-			"ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt",
-			"ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]",
-			"ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt",
-			"ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key",
-			"ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]",
-		},
+		Env: envVars(nil,0,""),
 		Cmd:             []string{"orderer"},
 		Image:           "hyperledger/fabric-orderer:1.4.6",
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric",
@@ -209,6 +178,48 @@ func (s *Service) List() error {
 	return nil
 }
 
+// Returns the environment variables in KEY="VALUE" form.
+func envVars(peer []config.Peers, i int, orgName string) []string {
+
+	switch peer {
+	case nil:
+		return []string{
+			"FABRIC_LOGGING_SPEC=INFO",
+			"ORDERER_GENERAL_LISTENADDRESS=0.0.0.0",
+			"ORDERER_GENERAL_GENESISMETHOD=file",
+			"ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/orderer.genesis.block",
+			"ORDERER_GENERAL_LOCALMSPID=OrdererMSP",
+			"ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp", // FIXME
+			//	TLS
+			"ORDERER_GENERAL_TLS_ENABLED=true",
+			"ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key",
+			"ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt",
+			"ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]",
+			"ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt",
+			"ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key",
+			"ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]",
+		}
+	default:
+		return []string{
+			"CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock",
+			"CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=giou_net",
+			"FABRIC_LOGGING_SPEC=INFO",
+			"CORE_PEER_GOSSIP_USELEADERELECTION=true",
+			"CORE_PEER_GOSSIP_ORGLEADER=false",
+			"CORE_PEER_PROFILE_ENABLED=true",
+
+			"CORE_PEER_ID=" + peer[i].Name,
+			"CORE_PEER_ADDRESS=" + peer[i].Name + ":7051",
+			"CORE_PEER_LISTENADDRESS=0.0.0.0:7051",
+			"CORE_PEER_CHAINCODEADDRESS=" + peer[i].Name + ":7052",
+			"CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052",
+			"CORE_PEER_GOSSIP_BOOTSTRAP=" + peer[len(peer)-(i+1)].Name,
+			"CORE_PEER_GOSSIP_EXTERNALENDPOINT=" + peer[i].Name + ":7051",
+			"CORE_PEER_LOCALMSPID=" + strings.Title(orgName) + "MSP",
+		}
+	}
+
+}
 //func printStream(streamer io.Reader) error {
 //
 //	var w io.Writer
