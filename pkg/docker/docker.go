@@ -41,16 +41,16 @@ func (s *Service) CreateNetwork() error {
 
 	// Create docker client.
 	if cli, err = NewClient(); err != nil {
-		return err
+		return errors.Wrap(err, "NewClient failed with error")
 	}
 	s.MyClient = cli
 
 	ctx := context.Background() // Fixme: have the ctx as parameter in every func.
 	respNet, err := cli.NetworkCreate(ctx, "giou_net", types.NetworkCreate{})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "NetworkCreate failed with error")
 	}
-	log.Println("network has been created wth ID: ", respNet.ID)
+	log.Println("Network has been created wth ID: ", respNet.ID)
 
 	// In need of absolute path to bind/mount host:container paths.
 	projectPath, err := filepath.Abs("./")
@@ -59,12 +59,12 @@ func (s *Service) CreateNetwork() error {
 	for _, org := range s.Cfg.Orgs {
 		for i := range org.Peers {
 			if err = s.RunPeer(org.Name, org.Peers, projectPath, i); err != nil {
-				return err
+				return errors.Wrap(err, "RunPeer failed")
 			}
 		}
 		for i := range org.Orderers {
 			if err = s.RunOrderer(org.Orderers, projectPath, i); err != nil {
-				return err
+				return errors.Wrap(err, "RunOrderer failed")
 			}
 		}
 	}
@@ -77,9 +77,9 @@ func (s *Service) RunPeer(orgName string, peer []config.Peers, projectPath strin
 	ctx := context.Background()
 
 	cfg := &container.Config{
-		Hostname:   peer[i].Name,
-		Domainname: peer[i].Name,
-		Env: envVars(peer, i, orgName),
+		Hostname:        peer[i].Name,
+		Domainname:      peer[i].Name,
+		Env:             envVars(peer, i, orgName),
 		Cmd:             []string{"peer", "node", "start"},
 		Image:           "hyperledger/fabric-peer:1.4.6",
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric/peer",
@@ -100,9 +100,9 @@ func (s *Service) RunPeer(orgName string, peer []config.Peers, projectPath strin
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
 		peer[i].Name)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "ContainerCreate failed with error")
 	}
-	log.Println("containerCreate for peer response: ", resp)
+	log.Println("ContainerCreate for peer response: ", resp)
 
 	return s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
 }
@@ -112,9 +112,9 @@ func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i in
 	ctx := context.Background()
 
 	cfg := &container.Config{
-		Hostname:   orderer[i].Name,
-		Domainname: orderer[i].Name,
-		Env: envVars(nil,0,""),
+		Hostname:        orderer[i].Name,
+		Domainname:      orderer[i].Name,
+		Env:             envVars(nil, 0, ""),
 		Cmd:             []string{"orderer"},
 		Image:           "hyperledger/fabric-orderer:1.4.6",
 		WorkingDir:      "/opt/gopath/src/github.com/hyperledger/fabric",
@@ -123,7 +123,7 @@ func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i in
 
 	containerPort, err := nat.NewPort("tcp", "7050")
 	if err != nil {
-		return errors.Wrap(err, "Unable to get the port")
+		return errors.Wrap(err, "NewPort failed with error")
 	}
 
 	hostConfig := &container.HostConfig{
@@ -148,26 +148,26 @@ func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i in
 
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil, orderer[i].Name)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "ContainerCreate failed with error")
 	}
-	log.Println("containerCreate for orderers response: ", resp)
+	log.Println("ContainerCreate for orderer response: ", resp)
 
 	//hijackResp, err := s.MyClient.ContainerAttach(ctx, resp.ID, types.ContainerAttachOptions{})
 	//defer hijackResp.Close()
 	//// TODO: should I put defer in a goroutine?
 
 	if err := s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-		return err
+		return errors.Wrap(err, "ContainerStart failed with error")
 	}
 
-	return err
+	return nil
 }
 
 // List prints out the list of running containers.
 func (s *Service) List() error {
 	containers, err := s.MyClient.ContainerList(context.Background(), types.ContainerListOptions{})
 	if err != nil {
-		return err
+		return errors.Wrap(err, "ContainerList failed with error")
 	}
 
 	log.Println("List of containers that are running: ")
@@ -220,6 +220,7 @@ func envVars(peer []config.Peers, i int, orgName string) []string {
 	}
 
 }
+
 //func printStream(streamer io.Reader) error {
 //
 //	var w io.Writer

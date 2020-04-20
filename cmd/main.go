@@ -41,7 +41,7 @@ func main() {
 
 	// Run the containers.
 	if err = n.CreateNetwork(); err != nil {
-		log.Printf("CreateNetwork finished with error: %v", err)
+		log.Printf("CreateNetwork failed: %v", err)
 		os.Exit(1)
 	}
 }
