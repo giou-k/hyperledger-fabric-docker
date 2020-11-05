@@ -11,6 +11,7 @@ import (
 	"log"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 type Service struct {
@@ -21,8 +22,10 @@ type Service struct {
 
 type NetworkAPI interface {
 	CreateNetwork() error
-	RunPeer(orgName string, peer []config.Peers, projectPath string, i int) error
-	RunOrderer(orderer []config.Orderers, projectPath string, i int) error
+	RunPeer(orgName string, peer []config.Peers, projectPath string, i int,
+		errChanPeer chan error, wgPeerDone chan bool)
+	RunOrderer(orderer []config.Orderers, projectPath string, i int,
+		errChanOrderer chan error, wgOrdererDone chan bool)
 	List() error
 }
 
@@ -33,19 +36,25 @@ func NewClient() (*client.Client, error) {
 
 // CreateNetwork creates the containers/nodes of our blockchain network.
 func (s *Service) CreateNetwork() error {
+	// Create docker client.
 	var (
 		cli *client.Client
 
-		err error
+		err            error
+		errChanPeer    = make(chan error, 1)
+		errChanOrderer = make(chan error, 1)
+
+		wg            sync.WaitGroup
+		wgPeerDone    = make(chan bool) // todo change this to ctx.Done()
+		wgOrdererDone = make(chan bool) // todo change this to ctx.Done()
 	)
 
-	// Create docker client.
 	if cli, err = NewClient(); err != nil {
 		return errors.Wrap(err, "NewClient failed with error")
 	}
 	s.MyClient = cli
 
-	ctx := context.Background() // Fixme: have the ctx as parameter in every func.
+	ctx := context.TODO()
 	respNet, err := cli.NetworkCreate(ctx, "giou_net", types.NetworkCreate{})
 	if err != nil {
 		return errors.Wrap(err, "NetworkCreate failed with error")
@@ -58,73 +67,128 @@ func (s *Service) CreateNetwork() error {
 		return errors.Wrap(err, "Failed to get project's path with error")
 	}
 
-	// Loop through organizations and run peer containers.
-	for _, org := range s.Cfg.Orgs {
-		for i := range org.Peers {
-			if err = s.RunPeer(org.Name, org.Peers, projectPath, i); err != nil {
-				return errors.Wrap(err, "RunPeer failed")
+	wg.Add(1)
+
+	go func(orgs []config.Organization) {
+		defer wg.Done()
+
+		for _, org := range orgs {
+			for i := range org.Peers {
+
+				go s.RunPeer(org.Name, org.Peers, projectPath, i, errChanPeer, wgPeerDone)
+
+				select {
+				case <-wgPeerDone:
+					log.Println("carry on...")
+
+					break
+				case err := <-errChanPeer:
+					close(errChanPeer)
+					log.Fatal("Error: ", err)
+					//return err
+					return
+				}
 			}
 		}
+	}(s.Cfg.Orgs[1:])
+
+	wg.Add(1)
+
+	go func(org config.Organization) {
+		defer wg.Done()
+
 		for i := range org.Orderers {
-			if err = s.RunOrderer(org.Orderers, projectPath, i); err != nil {
-				return errors.Wrap(err, "RunOrderer failed")
+
+			go s.RunOrderer(org.Orderers, projectPath, i, errChanOrderer, wgOrdererDone)
+
+			select {
+			case <-wgOrdererDone:
+				// carry on
+				log.Println("carry on orderer...")
+
+				break
+			case err := <-errChanOrderer:
+				close(errChanOrderer)
+				log.Fatal("Error Orderer: ", err)
+				//return err
+				return
 			}
 		}
-	}
+	}(s.Cfg.Orgs[0])
+
+	// waits until containers are up and running
+	wg.Wait()
 
 	return s.List()
 }
 
 // RunPeer runs peer containers.
-func (s *Service) RunPeer(orgName string, peer []config.Peers, projectPath string, i int) error {
-	ctx := context.Background()
-
+func (s *Service) RunPeer(orgName string, peer []config.Peers, projectPath string, i int,
+	errChanPeer chan error, wgPeerDone chan bool) {
+	ctx := context.TODO()
 	cfg, hostConfig := configPeer(peer, projectPath, orgName, i)
 
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil,
 		peer[i].Name)
 	if err != nil {
-		return errors.Wrap(err, "ContainerCreate failed with error")
+		errChanPeer <- errors.Wrap(err, "ContainerCreate failed with error")
+		return
 	}
+
 	log.Println("ContainerCreate for peer response: ", resp)
 
-	return s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	err = s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{})
+	if err != nil {
+		errChanPeer <- errors.Wrap(err, "ContainerStart failed with error")
+		return
+	}
+
+	log.Println("ContainerStart for peer succeed.")
+
+	wgPeerDone <- true
 }
 
 // RunOrderer runs orderer containers.
-func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i int) error {
-	ctx := context.Background()
+func (s *Service) RunOrderer(orderer []config.Orderers, projectPath string, i int,
+	errChanOrderer chan error, wgOrdererDone chan bool) {
+	ctx := context.TODO()
 
 	cfg, hostConfig, err := configOrderer(orderer[i], projectPath)
 	if err != nil {
-		return errors.Wrap(err, "configOrderer failed")
+		errChanOrderer <- errors.Wrap(err, "configOrderer failed with error")
+		return
 	}
 
 	resp, err := s.MyClient.ContainerCreate(ctx, cfg, hostConfig, nil, orderer[i].Name)
 	if err != nil {
-		return errors.Wrap(err, "ContainerCreate failed with error")
+		errChanOrderer <- errors.Wrap(err, "ContainerCreate failed with error")
+		return
 	}
+
 	log.Println("ContainerCreate for orderer response: ", resp)
 
 	//hijackResp, err := s.MyClient.ContainerAttach(ctx, resp.ID, types.ContainerAttachOptions{})
 	//defer hijackResp.Close()
-	//// TODO: should I put defer in a goroutine?
 
 	if err := s.MyClient.ContainerStart(ctx, resp.ID, types.ContainerStartOptions{}); err != nil {
-		return errors.Wrap(err, "ContainerStart failed with error")
+		errChanOrderer <- errors.Wrap(err, "ContainerStart failed with error")
+		return
 	}
 
-	return nil
+	log.Println("ContainerStart for orderer succeed.")
+
+	wgOrdererDone <- true
 }
 
 // List prints out the list of running containers.
 func (s *Service) List() error {
-	containers, err := s.MyClient.ContainerList(context.Background(), types.ContainerListOptions{})
+	containers, err := s.MyClient.ContainerList(context.TODO(), types.ContainerListOptions{})
 	if err != nil {
 		return errors.Wrap(err, "ContainerList failed with error")
 	}
 
 	log.Println("List of containers that are running: ")
+
 	for _, thisContainer := range containers {
 		log.Println("container ID:", thisContainer.ID, "with container Name:", thisContainer.Names[0])
 	}
@@ -134,7 +198,6 @@ func (s *Service) List() error {
 
 // Returns the environment variables in KEY="VALUE" form.
 func envVars(peer []config.Peers, i int, orgName string) []string {
-
 	switch peer {
 	case nil:
 		return []string{
@@ -172,12 +235,10 @@ func envVars(peer []config.Peers, i int, orgName string) []string {
 			"CORE_PEER_LOCALMSPID=" + strings.Title(orgName) + "MSP",
 		}
 	}
-
 }
 
 // configPeer configures docker variables for each peer.
 func configPeer(peer []config.Peers, projectPath string, orgName string, i int) (*container.Config, *container.HostConfig) {
-
 	cfg := &container.Config{
 		Hostname:        peer[i].Name,
 		Domainname:      peer[i].Name,
@@ -204,7 +265,6 @@ func configPeer(peer []config.Peers, projectPath string, orgName string, i int) 
 
 // configOrderer configures docker variables for each orderer.
 func configOrderer(orderer config.Orderers, projectPath string) (*container.Config, *container.HostConfig, error) {
-
 	cfg := &container.Config{
 		Hostname:        orderer.Name,
 		Domainname:      orderer.Name,
